@@ -230,6 +230,101 @@ class NorwegianDateRecognizer(PatternRecognizer):
         )
 
 
+_STREET_SUFFIX_EMBEDDED = (
+    "veien|vei|gata|gate|gaten|alléen|allé|plassen|plass"
+    "|torget|torg|bakken|terrassen|terrasse|ringen|ring"
+    "|stien|sti|svingen|sving|kaia|kai|lien|lia|bryggen|brygge"
+    "|løkken|løkka|høyden|brinken"
+)
+_STREET_SUFFIX_WORD = "allé|gate|gata|vei|plass|torg|brygge|kai|sti|sving|ring"
+
+_CITIES_NO = (
+    "Oslo|Bergen|Trondheim|Stavanger|Kristiansand|Tromsø|Drammen|Fredrikstad"
+    "|Sandnes|Ålesund|Sarpsborg|Bodø|Sandefjord|Tønsberg|Skien|Porsgrunn"
+    "|Arendal|Halden|Hamar|Gjøvik|Lillehammer|Molde|Harstad|Narvik"
+    "|Larvik|Kongsberg|Moss|Horten|Alta|Jessheim|Lillestrøm|Asker|Lørenskog"
+    "|Levanger|Steinkjer|Namsos|Røros|Kristiansund|Haugesund|Egersund"
+    "|Farsund|Mandal|Grimstad|Risør|Askim|Eidsvoll|Hønefoss|Kongsvinger"
+    "|Elverum|Brumunddal|Notodden|Stord|Bryne|Orkanger|Stjørdal"
+    "|Volda|Ørsta|Åndalsnes|Odda|Jørpeland|Vennesla|Lillesand"
+    "|Flekkefjord|Lyngdal|Bamble|Langesund|Tvedestrand|Nittedal|Ski|Rælingen"
+)
+
+
+class NorwegianStreetAddressRecognizer(PatternRecognizer):
+    """Recognize Norwegian street addresses like 'Storgata 14' or 'Fjordveien 3B'."""
+
+    PATTERNS = [
+        Pattern(
+            "NO street embedded suffix",
+            rf"\b[A-ZÆØÅ][a-zæøå]*(?:{_STREET_SUFFIX_EMBEDDED})\s+\d+[A-Za-zÆØÅæøå]{{0,2}}\b",
+            0.70,
+        ),
+        Pattern(
+            "NO street word suffix",
+            rf"\b[A-ZÆØÅ][a-zæøå]+(?:\s+[A-ZÆØÅ][a-zæøå]+)?\s+(?:{_STREET_SUFFIX_WORD})\s+\d+[A-Za-zÆØÅæøå]{{0,2}}\b",
+            0.65,
+        ),
+    ]
+    CONTEXT = [
+        "adresse", "bosted", "gateadresse", "hjemmeadresse",
+        "postadresse", "address", "gate", "vei", "bor", "bopel",
+    ]
+
+    def __init__(self):
+        super().__init__(
+            supported_entity="NO_STREET_ADDRESS",
+            patterns=self.PATTERNS,
+            context=self.CONTEXT,
+            supported_language="en",
+        )
+
+
+class NorwegianPostalCodeRecognizer(PatternRecognizer):
+    """Recognize standalone Norwegian postal codes when column/field context confirms it."""
+
+    PATTERNS = [
+        Pattern(
+            "NO postal code standalone",
+            r"\b(0[1-9]\d{2}|[1-9]\d{3})\b",
+            0.30,
+        ),
+    ]
+    CONTEXT = ["postnr", "postnummer", "poststed", "postadresse", "postkode", "zip", "postal"]
+
+    def __init__(self):
+        super().__init__(
+            supported_entity="NO_POSTAL_CODE",
+            patterns=self.PATTERNS,
+            context=self.CONTEXT,
+            supported_language="en",
+        )
+
+
+class NorwegianCityRecognizer(PatternRecognizer):
+    """Recognize Norwegian city names when column/field context confirms it."""
+
+    PATTERNS = [
+        Pattern(
+            "NO city name",
+            rf"\b(?:{_CITIES_NO})\b",
+            0.30,
+        ),
+    ]
+    CONTEXT = [
+        "poststed", "by", "sted", "city", "postnr", "postnummer",
+        "adresse", "bosted", "hjemmeadresse", "postadresse",
+    ]
+
+    def __init__(self):
+        super().__init__(
+            supported_entity="NO_CITY",
+            patterns=self.PATTERNS,
+            context=self.CONTEXT,
+            supported_language="en",
+        )
+
+
 class NorwegianHyphenatedNameRecognizer(PatternRecognizer):
     """Catch hyphenated Norwegian first names + surname that NER may only partially tag.
 
@@ -267,6 +362,9 @@ def get_norwegian_recognizers() -> List[PatternRecognizer]:
         NorwegianBankAccountRecognizer(),
         NorwegianHealthInfoRecognizer(),
         NorwegianPostalAddressRecognizer(),
+        NorwegianStreetAddressRecognizer(),
+        NorwegianPostalCodeRecognizer(),
+        NorwegianCityRecognizer(),
         NorwegianDateRecognizer(),
         NorwegianHyphenatedNameRecognizer(),
     ]
