@@ -38,6 +38,9 @@ ENTITY_TO_PLACEHOLDER: Dict[str, str] = {
     "AU_ACN": "[ORGNUMMER]",
     "URL": "[SENSITIVE_DATA]",
     "NO_DATE": "[DATO]",
+    "NO_STREET_ADDRESS": "[ADRESSE]",
+    "NO_POSTAL_CODE": "[POSTNUMMER]",
+    "NO_CITY": "[POSTSTED]",
 }
 
 ENTITIES = list(ENTITY_TO_PLACEHOLDER.keys())
@@ -50,6 +53,8 @@ CONFIDENCE_THRESHOLD = 0.4
 # _YEAR_RE_START: span starts with a year (e.g. "2024 Angående" from postal-code pattern)
 _YEAR_RE = re.compile(r"^(19|20)\d{2}$")
 _YEAR_RE_START = re.compile(r"^(19|20)\d{2}\b")
+# Customer/employee IDs like KN-002 or A-101 misclassified as LOCATION
+_ID_RE = re.compile(r"^[A-Za-z]{1,4}[-/]\d{1,6}[A-Za-z]?$")
 
 
 def _pick_spacy_model() -> str:
@@ -109,6 +114,8 @@ class AnonymizerCore:
         for r in results:
             chunk = text[r.start:r.end]
             if r.entity_type == "LOCATION" and _YEAR_RE.match(chunk.strip()):
+                continue
+            if r.entity_type in ("LOCATION", "PERSON", "NRP") and _ID_RE.match(chunk.strip()):
                 continue
             if r.entity_type == "NO_ADDRESS" and _YEAR_RE_START.match(chunk.strip()):
                 continue
