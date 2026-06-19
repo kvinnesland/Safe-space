@@ -1,0 +1,7 @@
+services:
+  safe:
+    build: .
+    image: safe-cli:latest
+    # Volumes are mounted dynamically by the ./safe wrapper so that any
+    # file path (local, OneDrive, SharePoint sync folder) works.
+    # Run `docker compose build` once; then use ./safe <filepath> for anonymization.

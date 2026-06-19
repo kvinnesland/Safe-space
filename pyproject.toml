@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "safe-cli"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+safe = "safe_cli.main:cli"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["safe_cli*"]

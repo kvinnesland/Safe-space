@@ -1,0 +1,7 @@
+safe-output/
+__pycache__/
+*.pyc
+*.egg-info/
+.env
+dist/
+build/
