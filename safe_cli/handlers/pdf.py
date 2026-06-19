@@ -39,10 +39,15 @@ def process(input_path: Path, output_path: Path, engine: AnonymizerCore) -> Dict
 
             rects = page.search_for(entity_text)
             for rect in rects:
+                # Scale fontsize so the placeholder fits the rect width without wrapping.
+                # Courier approximation: each character is ~0.6 × fontsize points wide.
+                chars = max(len(placeholder), 1)
+                computed_fs = rect.width / (chars * 0.6)
+                fontsize = max(4.0, min(computed_fs, 7.0))
                 page.add_redact_annot(
                     rect,
                     text=placeholder,
-                    fontsize=7,
+                    fontsize=fontsize,
                     fill=(1, 1, 1),       # white fill
                     text_color=(0, 0, 0), # black placeholder text
                 )
