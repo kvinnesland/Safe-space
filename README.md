@@ -19,11 +19,13 @@ Første bygg tar ~5 minutter (laster ned norske og engelske NLP-modeller). Etter
 
 ## Bruk
 
-```bash
-# Mac / Linux
-./safe /sti/til/dokument.docx
+**PowerShell (Windows):**
+```powershell
+.\safe.ps1 C:\Users\brukernavn\Downloads\rapport.xlsx
+```
 
-# Windows — Git Bash
+**Git Bash / Mac / Linux:**
+```bash
 ./safe /c/Users/brukernavn/Downloads/rapport.xlsx
 ```
 
@@ -68,7 +70,7 @@ Originalen røres ikke.
 
 ## Oppdatering
 
-```bash
+```powershell
 git pull
 docker compose build
 ```
