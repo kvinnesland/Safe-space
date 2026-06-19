@@ -36,7 +36,7 @@ def cli(filepath: Path, output_dir: str) -> None:
     handler = get_handler(suffix)
     if handler is None:
         click.echo(
-            f"Unsupported format '{suffix}'. Supported: .txt .csv .xlsx .docx .pdf",
+            f"Unsupported format '{suffix}'. Supported: .txt .csv .xlsx .docx .pdf .pptx",
             err=True,
         )
         sys.exit(1)

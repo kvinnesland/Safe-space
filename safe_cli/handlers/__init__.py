@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Callable, Dict, Optional
 
 from ..engine import AnonymizerCore
-from . import txt, csv_handler, xlsx, docx_handler, pdf
+from . import txt, csv_handler, xlsx, docx_handler, pdf, pptx_handler
 
 Handler = Callable[[Path, Path, "AnonymizerCore"], Dict[str, int]]
 
@@ -12,6 +12,7 @@ _HANDLERS: Dict[str, Handler] = {
     ".xlsx": xlsx.process,
     ".docx": docx_handler.process,
     ".pdf": pdf.process,
+    ".pptx": pptx_handler.process,
 }
 
 
