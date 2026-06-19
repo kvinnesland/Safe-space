@@ -41,10 +41,24 @@ INPUT_NAME="$(basename "$INPUT_ABS")"
 
 mkdir -p "$OUTPUT_DIR"
 
+# On Windows/Git Bash: convert host paths to Windows format before disabling
+# MSYS path conversion, so container-internal paths pass through unchanged.
+if command -v cygpath &>/dev/null; then
+    SCRIPT_DIR_D="$(cygpath -w "$SCRIPT_DIR")"
+    INPUT_DIR_D="$(cygpath -w "$INPUT_DIR")"
+    OUTPUT_DIR_D="$(cygpath -w "$OUTPUT_DIR")"
+    export MSYS_NO_PATHCONV=1
+    export MSYS2_ARG_CONV_EXCL="*"
+else
+    SCRIPT_DIR_D="$SCRIPT_DIR"
+    INPUT_DIR_D="$INPUT_DIR"
+    OUTPUT_DIR_D="$OUTPUT_DIR"
+fi
+
 # Mount the input file's directory read-only so any path works
 # (local disk, OneDrive sync folder, SharePoint mount, NAS, etc.)
-exec docker compose -f "$SCRIPT_DIR/docker-compose.yml" run --rm \
-    -v "$INPUT_DIR:/safe_input:ro" \
-    -v "$OUTPUT_DIR:/app/safe-output" \
+exec docker compose -f "$SCRIPT_DIR_D/docker-compose.yml" run --rm \
+    -v "$INPUT_DIR_D:/safe_input:ro" \
+    -v "$OUTPUT_DIR_D:/app/safe-output" \
     safe "/safe_input/$INPUT_NAME" \
     --output-dir /app/safe-output

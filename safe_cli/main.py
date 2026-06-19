@@ -1,6 +1,7 @@
 """CLI entrypoint for `safe` — anonymize files before passing to Claude."""
 
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import click
@@ -40,13 +41,9 @@ def cli(filepath: Path, output_dir: str) -> None:
         )
         sys.exit(1)
 
-    # Unique output filename — never overwrite
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
     stem = input_path.stem
-    output_path = out_dir / f"{stem}_anonymized{suffix}"
-    counter = 1
-    while output_path.exists():
-        output_path = out_dir / f"{stem}_anonymized_{counter}{suffix}"
-        counter += 1
+    output_path = out_dir / f"{stem}_anonymized_{timestamp}{suffix}"
 
     click.echo(f"Loading engine ...", err=True)
     engine = AnonymizerCore()

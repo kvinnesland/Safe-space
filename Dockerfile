@@ -15,6 +15,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # en_core_web_lg gives the best NER for names/locations (GDPR-critical accuracy).
 # Switch to en_core_web_md for a faster/smaller build at some accuracy cost.
 RUN python -m spacy download en_core_web_lg
+RUN python -m spacy download nb_core_news_lg
 
 COPY . .
 RUN pip install --no-cache-dir --no-deps .

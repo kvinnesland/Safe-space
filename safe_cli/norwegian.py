@@ -78,7 +78,9 @@ class FodselsnummerRecognizer(PatternRecognizer):
 
     def validate_result(self, pattern_text: str) -> Optional[bool]:
         digits = re.sub(r"[^\d]", "", pattern_text)
-        return _validate_fodselsnummer(digits)
+        # True = valid checksum (high confidence); None = uncertain but keep
+        # the match — never return False so test/synthetic data isn't silently dropped.
+        return True if _validate_fodselsnummer(digits) else None
 
 
 class OrgNumberRecognizer(PatternRecognizer):
@@ -104,7 +106,7 @@ class OrgNumberRecognizer(PatternRecognizer):
 
     def validate_result(self, pattern_text: str) -> Optional[bool]:
         digits = re.sub(r"[^\d]", "", pattern_text)
-        return _validate_org_number(digits)
+        return True if _validate_org_number(digits) else None
 
 
 class NorwegianPhoneRecognizer(PatternRecognizer):
@@ -115,6 +117,7 @@ class NorwegianPhoneRecognizer(PatternRecognizer):
         Pattern("NO phone +47 landline", r"\+47[\s\-]?[2-8]\d{7}\b", 0.85),
         Pattern("NO phone 0047", r"\b0047[\s\-]?\d{8}\b", 0.90),
         Pattern("NO mobile 8-digit", r"\b([49]\d{2}[\s\-]\d{2}[\s\-]\d{3}|[49]\d{7})\b", 0.70),
+        Pattern("NO landline XX XX XX XX", r"\b[2-9]\d[\s\-]\d{2}[\s\-]\d{2}[\s\-]\d{2}\b", 0.60),
     ]
     CONTEXT = [
         "telefon", "tlf", "mobil", "mob", "tel",
@@ -202,6 +205,60 @@ class NorwegianPostalAddressRecognizer(PatternRecognizer):
         )
 
 
+_MONTHS_NO = (
+    "januar|februar|mars|april|mai|juni|juli|"
+    "august|september|oktober|november|desember"
+)
+
+
+class NorwegianDateRecognizer(PatternRecognizer):
+    """Recognize Norwegian written dates like '14. mars 2024' or '3. juni 2024'."""
+
+    PATTERNS = [
+        Pattern(
+            "NO date written",
+            rf"\b\d{{1,2}}\.?\s+(?:{_MONTHS_NO})(?:\s+\d{{4}})?\b",
+            0.65,
+        ),
+    ]
+
+    def __init__(self):
+        super().__init__(
+            supported_entity="NO_DATE",
+            patterns=self.PATTERNS,
+            supported_language="en",
+        )
+
+
+class NorwegianHyphenatedNameRecognizer(PatternRecognizer):
+    """Catch hyphenated Norwegian first names + surname that NER may only partially tag.
+
+    The Norwegian NER model sometimes creates a span for just the surname when the
+    first name contains a hyphen (e.g. 'Bjørn-Arne Haugen' → only 'Haugen' tagged).
+    A score of 0.9 ensures this pattern wins conflict resolution over the partial NER hit.
+    """
+
+    PATTERNS = [
+        Pattern(
+            "NO hyphenated first name + surname",
+            r"\b[A-ZÆØÅ][a-zæøå]+-[A-ZÆØÅ][a-zæøå]+(?:\s+[A-ZÆØÅ][a-zæøå]+)+\b",
+            0.9,
+        ),
+    ]
+    CONTEXT = [
+        "navn", "kontakt", "utleier", "leietaker", "stede",
+        "referent", "fra", "til", "herr", "fru", "lege", "dr",
+    ]
+
+    def __init__(self):
+        super().__init__(
+            supported_entity="PERSON",
+            patterns=self.PATTERNS,
+            context=self.CONTEXT,
+            supported_language="en",
+        )
+
+
 def get_norwegian_recognizers() -> List[PatternRecognizer]:
     return [
         FodselsnummerRecognizer(),
@@ -210,4 +267,6 @@ def get_norwegian_recognizers() -> List[PatternRecognizer]:
         NorwegianBankAccountRecognizer(),
         NorwegianHealthInfoRecognizer(),
         NorwegianPostalAddressRecognizer(),
+        NorwegianDateRecognizer(),
+        NorwegianHyphenatedNameRecognizer(),
     ]

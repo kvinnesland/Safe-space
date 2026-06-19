@@ -1,5 +1,6 @@
 """Core anonymization engine — Presidio with Norwegian PII extensions."""
 
+import re
 from typing import Dict, List, Tuple
 
 from presidio_analyzer import AnalyzerEngine, RecognizerRegistry
@@ -36,6 +37,7 @@ ENTITY_TO_PLACEHOLDER: Dict[str, str] = {
     "AU_ABN": "[ORGNUMMER]",
     "AU_ACN": "[ORGNUMMER]",
     "URL": "[SENSITIVE_DATA]",
+    "NO_DATE": "[DATO]",
 }
 
 ENTITIES = list(ENTITY_TO_PLACEHOLDER.keys())
@@ -43,20 +45,29 @@ ENTITIES = list(ENTITY_TO_PLACEHOLDER.keys())
 # Low threshold: err on side of caution for GDPR compliance
 CONFIDENCE_THRESHOLD = 0.4
 
+# 4-digit years (19xx / 20xx) are misclassified as LOCATION/NO_ADDRESS by the NER model.
+# _YEAR_RE: exact match (e.g. bare "2024" tagged as LOCATION)
+# _YEAR_RE_START: span starts with a year (e.g. "2024 Angående" from postal-code pattern)
+_YEAR_RE = re.compile(r"^(19|20)\d{2}$")
+_YEAR_RE_START = re.compile(r"^(19|20)\d{2}\b")
+
 
 def _pick_spacy_model() -> str:
-    """Use the largest available spaCy English model for best NER accuracy."""
+    """Prefer Norwegian model for accurate Norwegian NER; fall back to English."""
     import spacy
 
-    for model in ("en_core_web_lg", "en_core_web_md", "en_core_web_sm"):
+    for model in (
+        "nb_core_news_lg", "nb_core_news_md", "nb_core_news_sm",
+        "en_core_web_lg", "en_core_web_md", "en_core_web_sm",
+    ):
         try:
             spacy.load(model)
             return model
         except OSError:
             continue
     raise RuntimeError(
-        "No spaCy English model found. Run inside Docker or: "
-        "python -m spacy download en_core_web_lg"
+        "No spaCy model found. Run inside Docker or: "
+        "python -m spacy download nb_core_news_lg"
     )
 
 
@@ -86,12 +97,25 @@ class AnonymizerCore:
 
     def analyze(self, text: str) -> list:
         """Return raw Presidio results with character-span positions."""
-        return self._analyzer.analyze(
+        results = self._analyzer.analyze(
             text=text,
             language="en",
             entities=ENTITIES,
             score_threshold=CONFIDENCE_THRESHOLD,
         )
+        # Drop years misclassified as LOCATION/NO_ADDRESS by the NER/postal-code recognizer
+        # Drop technical abbreviations (IP, DNS, …) misclassified as PERSON/NRP
+        filtered = []
+        for r in results:
+            chunk = text[r.start:r.end]
+            if r.entity_type == "LOCATION" and _YEAR_RE.match(chunk.strip()):
+                continue
+            if r.entity_type == "NO_ADDRESS" and _YEAR_RE_START.match(chunk.strip()):
+                continue
+            if r.entity_type in ("PERSON", "NRP") and len(chunk) >= 2 and chunk[0].isupper() and chunk[1].isupper():
+                continue
+            filtered.append(r)
+        return filtered
 
     def anonymize_text(self, text: str) -> Tuple[str, Dict[str, int]]:
         """
