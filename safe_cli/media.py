@@ -43,6 +43,6 @@ Del aldri denne filen med verktoey som kjoerer utenfor EU/EOES
 uten manuell gjennomgang og eventuell sladding.
 {sep}"""
 
-def standalone_warning(suffix: str) -> str:
+def standalone_warning() -> str:
     sep = "=" * 60
     return STANDALONE_MESSAGE.format(sep=sep)

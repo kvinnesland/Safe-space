@@ -56,7 +56,7 @@ def cli(filepath: Path, output_dir: str) -> None:
 
     # Standalone media files cannot be automatically anonymized
     if suffix in STANDALONE_MEDIA_EXT:
-        click.echo(standalone_warning(suffix))
+        click.echo(standalone_warning())
         sys.exit(2)
 
     handler = get_handler(suffix)

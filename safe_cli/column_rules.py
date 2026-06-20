@@ -34,7 +34,7 @@ _RULES = [
      "[ADDRESS]"),
     (re.compile(r"postnummer|post[\s._-]?nr|zip|postal[\s._-]?code", re.I),
      "[ADDRESS]"),
-    (re.compile(r"poststed|by|city", re.I),
+    (re.compile(r"poststed|\bby\b|city", re.I),
      "[ADDRESS]"),
 
     # ── Date of birth ────────────────────────────────────────────────────
@@ -65,21 +65,21 @@ _RULES = [
     (re.compile(r"diagnose|sykdom|helse(oppl)?|medisin|behandling|journal", re.I),
      "[HEALTH_INFO]"),
     (re.compile(r"genetisk|dna|genom", re.I),
-     "[HEALTH_INFO]"),
+     "[SENSITIVE_DATA]"),
     (re.compile(r"biometr|fingeravtrykk|ansiktsgjenkjenning", re.I),
-     "[HEALTH_INFO]"),
+     "[SENSITIVE_DATA]"),
     (re.compile(r"religion|trossamfunn|livssyn|konfesjon", re.I),
-     "[HEALTH_INFO]"),
+     "[SENSITIVE_DATA]"),
     (re.compile(r"fagforening|fagforbund|tillitsvalgt", re.I),
-     "[HEALTH_INFO]"),
+     "[SENSITIVE_DATA]"),
     (re.compile(r"politisk|parti(tillh|tilknyt)?", re.I),
-     "[HEALTH_INFO]"),
+     "[SENSITIVE_DATA]"),
     (re.compile(r"etnisitet|etnisk|rase|opprinnelse", re.I),
-     "[HEALTH_INFO]"),
+     "[SENSITIVE_DATA]"),
     (re.compile(r"seksuell|seksualitet|kj[øo]nnsidentitet|lhbt", re.I),
-     "[HEALTH_INFO]"),
+     "[SENSITIVE_DATA]"),
     (re.compile(r"straff|dom(fellt)?|siktelse|fengsel|lovbrudd", re.I),
-     "[HEALTH_INFO]"),
+     "[SENSITIVE_DATA]"),
 ]
 
 

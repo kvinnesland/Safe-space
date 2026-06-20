@@ -108,10 +108,12 @@ def process(input_path: Path, output_path: Path, engine: AnonymizerCore) -> Dict
     prs = Presentation(str(input_path))
 
     for slide in prs.slides:
-        # Remove media shapes first (before iterating text frames)
+        # Snapshot shapes before media removal; _remove_media_shapes adds new
+        # placeholder textboxes that must not be passed through anonymization.
+        original_shapes = list(slide.shapes)
         _remove_media_shapes(slide, stats)
 
-        for shape in slide.shapes:
+        for shape in original_shapes:
             if shape.has_text_frame:
                 _anonymize_text_frame(shape.text_frame, engine, stats)
             if shape.has_table:

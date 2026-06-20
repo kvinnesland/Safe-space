@@ -16,28 +16,74 @@ def _remove_embedded_media(body, stats: Dict[str, int]) -> None:
     and VML images (v:imagedata) with placeholder text runs.
     Works by finding the containing <w:r> and swapping its content.
     """
-    # Inline and floating images / GIFs
+    def _find_run_ancestor(el):
+        """Walk up the XML tree to find the enclosing <w:r>, or None."""
+        node = el.getparent()
+        while node is not None:
+            if node.tag == qn("w:r"):
+                return node
+            node = node.getparent()
+        return None
+
+    # Inline and floating images / GIFs.
+    # Modern Word wraps floating images in <mc:AlternateContent>/<mc:Choice>/<w:drawing>,
+    # so getparent() may return <mc:Choice>, not <w:r>. Walk up to find the run.
     for drawing in list(body.iter(qn("w:drawing"))):
-        run = drawing.getparent()
-        if run is None:
-            continue
-        run.remove(drawing)
-        t = OxmlElement("w:t")
-        t.text = PLACEHOLDER_IMAGE
-        t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
-        run.append(t)
+        run = _find_run_ancestor(drawing)
+        if run is not None:
+            # Remove the drawing (or its mc:AlternateContent wrapper) from the run
+            child_to_remove = drawing
+            p = drawing.getparent()
+            while p is not None and p is not run:
+                child_to_remove = p
+                p = p.getparent()
+            run.remove(child_to_remove)
+            t = OxmlElement("w:t")
+            t.text = PLACEHOLDER_IMAGE
+            t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+            run.append(t)
+        else:
+            # No enclosing run — drawing is a direct child of a paragraph or body.
+            # Replace it with a new run containing the placeholder text.
+            parent = drawing.getparent()
+            if parent is None:
+                continue
+            idx = list(parent).index(drawing)
+            parent.remove(drawing)
+            new_run = OxmlElement("w:r")
+            t = OxmlElement("w:t")
+            t.text = PLACEHOLDER_IMAGE
+            t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+            new_run.append(t)
+            parent.insert(idx, new_run)
         stats[PLACEHOLDER_IMAGE] = stats.get(PLACEHOLDER_IMAGE, 0) + 1
 
     # OLE objects — embedded video, audio, spreadsheets, etc.
     for obj in list(body.iter(qn("w:object"))):
-        run = obj.getparent()
-        if run is None:
-            continue
-        run.remove(obj)
-        t = OxmlElement("w:t")
-        t.text = PLACEHOLDER_MEDIA
-        t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
-        run.append(t)
+        run = _find_run_ancestor(obj)
+        if run is not None:
+            child_to_remove = obj
+            p = obj.getparent()
+            while p is not None and p is not run:
+                child_to_remove = p
+                p = p.getparent()
+            run.remove(child_to_remove)
+            t = OxmlElement("w:t")
+            t.text = PLACEHOLDER_MEDIA
+            t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+            run.append(t)
+        else:
+            parent = obj.getparent()
+            if parent is None:
+                continue
+            idx = list(parent).index(obj)
+            parent.remove(obj)
+            new_run = OxmlElement("w:r")
+            t = OxmlElement("w:t")
+            t.text = PLACEHOLDER_MEDIA
+            t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+            new_run.append(t)
+            parent.insert(idx, new_run)
         stats[PLACEHOLDER_MEDIA] = stats.get(PLACEHOLDER_MEDIA, 0) + 1
 
     # Legacy VML images (older Word files)

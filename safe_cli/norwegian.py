@@ -155,7 +155,12 @@ class NorwegianBankAccountRecognizer(PatternRecognizer):
 
 
 class NorwegianHealthInfoRecognizer(PatternRecognizer):
-    """Flag medical/health terminology as sensitive context markers."""
+    """Replace medical terminology with [HEALTH_INFO] placeholders.
+
+    Intentionally aggressive: common medical words (diagnose, behandling, etc.)
+    are themselves Article 9 indicators and are replaced to prevent the
+    surrounding clinical context from revealing the patient's condition.
+    """
 
     PATTERNS = [
         Pattern(

@@ -9,7 +9,12 @@ from ..media import PLACEHOLDER_IMAGE
 
 
 def _remove_images(sheet, stats: Dict[str, int]) -> None:
-    """Remove all embedded images from a worksheet."""
+    """Remove all embedded images from a worksheet.
+
+    Excel images float over cells rather than sitting in them, so removal
+    leaves blank space with no visual placeholder — unlike DOCX and PPTX.
+    The audit log and summary output record the count of removed images.
+    """
     if hasattr(sheet, "_images") and sheet._images:
         count = len(sheet._images)
         sheet._images.clear()
