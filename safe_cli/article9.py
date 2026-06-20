@@ -19,41 +19,67 @@ _CATEGORIES = [
     (
         "helseopplysninger",
         [re.compile(
-            r"\b(diagnos[ei]|sykdom|sykehus|legemiddel|medisinsk?|"
-            r"helseopplysning|allergi|operasjon|innleggelse|poliklinikk|"
+            # Norwegian (bokmål + nynorsk)
+            r"\b(diagnos[ei]|sykdom|sjukdom|sykehus|sjukehus|legemiddel|medisinsk?|"
+            r"helseopplysning(?:ar)?|allergi|operasjon|innleggelse|poliklinikk|"
             r"rehabilitering|prognose|symptom(?:er)?|kreft|diabetes|"
-            r"depresjon|angst|psykisk|psykiatri|HIV|AIDS|"
-            r"funksjonshemming|nedsatt\s+funksjonsevne|uf[øo]re|"
-            r"pasientjournal|EPJ|helsejour|blodtype|blodtrykk|"
-            r"medikament|beh?andling(?:splan)?|r[øo]ntgen|MR[\s-]?(?:bilder?)?|CT[\s-]?(?:bilder?)?)\b",
+            r"depresjon|angst|psykisk|psykiatri|psykose|psykolog|"
+            r"HIV|AIDS|funksjonshemming|nedsatt\s+funksjonsevne|nedsett\s+funksjonsevne|"
+            r"uf[øo]re(?:trygd)?|pasientjournal|legejournal|EPJ|helsejour|"
+            r"blodtype|blodtrykk|blodpr[øo]ve|medikament|medisinering|"
+            r"beh?andling(?:splan)?|r[øo]ntgen|ultralyd|biopsi|"
+            r"MR[\s-]?(?:bilder?)?|CT[\s-]?(?:bilder?)?|"
+            r"sykemelding|sjukemelding|sykefrav[æa]r|resept|"
+            r"rusbehandling|ADHD|autisme|demens|Alzheimer|epilepsi|astma|"
+            # English
+            r"diagnosis|diagnoses|cancer|tumo(?:u?r)|prescription|"
+            r"medical[\s-]?record|health[\s-]?record|patient[\s-]?record|"
+            r"psychiatric|psychiatry|mental[\s-]?health|"
+            r"disability|impairment|sick[\s-]?leave|medical[\s-]?leave|"
+            r"blood[\s-]?type|blood[\s-]?pressure|allerg[yi]|"
+            r"X-ray|MRI[\s-]?scan|CT[\s-]?scan)\b",
             re.I,
         )],
     ),
     (
         "genetiske opplysninger",
-        [re.compile(r"\b(DNA|genetisk|arvelighet|genom|kromosom|genmutasjon|gentest)\b", re.I)],
+        [re.compile(
+            r"\b(DNA|genetisk|genetics?|arvelighet|arveleg|hereditary|"
+            r"genom(?:e)?|kromosom|chromosome|genmutasjon|mutation|gentest|"
+            r"genetic[\s-]?test|BRCA)\b",
+            re.I,
+        )],
     ),
     (
         "biometriske opplysninger",
         [re.compile(
-            r"\b(fingeravtrykk|ansiktsgjenkjenning|iris(?:skann)?|retina|"
-            r"biometr|stemmeavtrykk|DNA-profil|ansiktsskann)\b",
+            r"\b(fingeravtrykk|fingerprint|ansiktsgjenkjenning|"
+            r"facial[\s-]?recognition|face[\s-]?recognition|"
+            r"iris(?:skann|[\s-]?scan)?|retina(?:[\s-]?scan)?|"
+            r"biometrisk?|biometri|biometrics?|"
+            r"stemmeavtrykk|voiceprint|voice[\s-]?recognition|"
+            r"DNA-profil|ansiktsskann)\b",
             re.I,
         )],
     ),
     (
         "rase eller etnisk opprinnelse",
         [re.compile(
-            r"\b(etnisk\s+opprinnelse|rasemessig|hudfarge|rase(?:diskriminering)?|"
-            r"nasjonal\s+opprinnelse|minoritet(?:sbakgrunn)?|innvandrerbakgrunn)\b",
+            r"\b(etnisk\s+opprinnelse|etnisk\s+opphav|ethnic[\s-]?origin|ethnicity|"
+            r"rasemessig|racial|hudfarge|skin[\s-]?colou?r|"
+            r"rase(?:diskriminering)?|nasjonal\s+opprinnelse|nasjonal\s+opphav|"
+            r"national[\s-]?origin|minoritet(?:sbakgrunn)?|"
+            r"innvandrerbakgrunn|innvandrarbakgrunn)\b",
             re.I,
         )],
     ),
     (
         "politisk oppfatning",
         [re.compile(
-            r"\b(politisk\s+(oppfatning|overbevisning|syn|tilh[øo]righet)|"
-            r"partitilh[øo]righet|partipolitisk|stemte?\s+p[åa]|"
+            r"\b(politisk\s+(oppfatning|overbevisning|overtyding|syn|tilh[øo]righet)|"
+            r"partitilh[øo]righet|partitilh[øo]rsle|partipolitisk|"
+            r"stemte?\s+p[åa]|r[øo]ysta\s+p[åa]|"
+            r"political[\s-]?(opinion|view|belief|affiliation)|party[\s-]?affiliation|"
             r"Arbeiderparti(?:et)?|H[øo]yre|Fremskrittsparti(?:et)?|"
             r"SV|Senterparti(?:et)?|Venstre|KrF|MDG|R[øo]dt)\b",
             re.I,
@@ -62,39 +88,51 @@ _CATEGORIES = [
     (
         "religiøs eller filosofisk overbevisning",
         [re.compile(
-            r"\b(trossamfunn|religionsutov|livssyn|konfesjon|"
-            r"muslim|kristen|jødisk|hindu|buddhist|ateist|"
-            r"moské|synagoge|kirkemedlem|d[åa]p|omskj[æa]ring|"
-            r"ramadan|sharia|halal|kosher|frikirke)\b",
+            r"\b(trossamfunn|trudomssamfunn|religionsutov|livssyn|konfesjon|"
+            r"muslim|kristen|Christian(?:ity)?|jødisk|Jewish|Judaism|"
+            r"hindu|buddhist|ateist|atheist|agnostic|Sikh|Sikhism|"
+            r"moské|mosque|synagoge|synagogue|kirkemedlem|"
+            r"d[åa]p|baptism|omskj[æa]ring|circumcision|"
+            r"ramadan|sharia|halal|kosher|frikirke|"
+            r"Jehovas\s+vitner|Jehovah['']?s\s+Witness(?:es)?|Mormon)\b",
             re.I,
         )],
     ),
     (
         "fagforeningsmedlemskap",
         [re.compile(
-            r"\b(fagforening|fagforbund|fagorganisert|"
-            r"\bLO\b|\bYS\b|\bUnio\b|\bAkademikerne\b|"
-            r"tillitsvalgt|streik(?:erett)?|tariffavtale|"
-            r"kollektiv\s+avtale|fagforeningskontingent)\b",
+            r"\b(fagforening|fagforeining|fagforbund|fagorganisert|"
+            r"LO|YS|Unio|Akademikerne|"
+            r"tillitsvalgt|tillitsvald|streik(?:erett|rett)?|tariffavtale|"
+            r"kollektiv\s+avtale|fagforeningskontingent|"
+            r"trade[\s-]?union|labor[\s-]?union|labour[\s-]?union|"
+            r"union[\s-]?membership|shop[\s-]?steward|collective[\s-]?bargaining)\b",
             re.I,
         )],
     ),
     (
         "seksuelle forhold eller seksuell orientering",
         [re.compile(
-            r"\b(seksuell\s+orientering|seksualitet|homofil|lesbisk|"
-            r"bifil|transperson|kj[øo]nnsidentitet|kj[øo]nnskorrigering|"
-            r"\bLHBT\b|\bLGBT\b|queer|ikke-bin[æa]r)\b",
+            r"\b(seksuell\s+orientering|sexual[\s-]?orientation|seksualitet|"
+            r"homofil|homosexual|lesbisk|lesbian|bifil|bisexual|"
+            r"transperson|transgender|kj[øo]nnsidentitet|gender[\s-]?identity|"
+            r"kj[øo]nnskorrigering|gender[\s-]?reassignment|kj[øo]nnsskifte|"
+            r"LHBT|LGBT(?:Q(?:IA?\+?)?)?|queer|ikke-bin[æa]r|non.?binary|"
+            r"intersex|same.?sex)\b",
             re.I,
         )],
     ),
     (
         "straffbare forhold",
         [re.compile(
-            r"\b(domfelt|straffedom|fengselsstraff|varetektsfengslet|"
-            r"siktelse|tiltale(?:beslutning)?|b[øo]telagt|"
-            r"kriminell\s+bakgrunn|politianmeldelse|straffeattest|"
-            r"pr[øo]vel[øo]slatelse|betinget\s+dom)\b",
+            r"\b(domfelt|convicted|conviction|straffedom|fengselsstraff|"
+            r"prison[\s-]?sentence|imprisonment|incarceration|"
+            r"varetektsfengslet|varetektsfengsla|remand(?:\s+custody)?|"
+            r"siktelse|indictment|tiltale(?:beslutning)?|b[øo]telagt|b[øo]telagd|"
+            r"kriminell\s+bakgrunn|criminal[\s-]?record|criminal[\s-]?background|"
+            r"politianmeldelse|straffeattest|"
+            r"pr[øo]vel[øo]slatelse|pr[øo]velauslating|parole|probation|"
+            r"betinget\s+dom|betinga\s+dom|suspended[\s-]?sentence)\b",
             re.I,
         )],
     ),
