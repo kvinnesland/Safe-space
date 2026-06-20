@@ -1,4 +1,4 @@
-"""Core anonymization engine — Presidio with Norwegian PII extensions."""
+"""Core anonymization engine — Presidio with Norwegian + English dual-language analysis."""
 
 import re
 from typing import Dict, List, Tuple
@@ -57,34 +57,77 @@ _YEAR_RE_START = re.compile(r"^(19|20)\d{2}\b")
 _ID_RE = re.compile(r"^[A-Za-z]{1,4}[-/]\d{1,6}[A-Za-z]?$")
 
 
-def _pick_spacy_model() -> str:
-    """Prefer Norwegian model for accurate Norwegian NER; fall back to English."""
+def _load_available_models() -> List[Dict[str, str]]:
+    """Find the best available spaCy model for each supported language."""
     import spacy
 
-    for model in (
-        "nb_core_news_lg", "nb_core_news_md", "nb_core_news_sm",
-        "en_core_web_lg", "en_core_web_md", "en_core_web_sm",
-    ):
-        try:
-            spacy.load(model)
-            return model
-        except OSError:
+    found = []
+    for lang, candidates in [
+        ("nb", ["nb_core_news_lg", "nb_core_news_md", "nb_core_news_sm"]),
+        ("en", ["en_core_web_lg", "en_core_web_md", "en_core_web_sm"]),
+    ]:
+        for model in candidates:
+            try:
+                spacy.load(model)
+                found.append({"lang_code": lang, "model_name": model})
+                break
+            except OSError:
+                continue
+
+    if not found:
+        raise RuntimeError(
+            "No spaCy model found. Build the Docker image first:\n"
+            "  docker compose build"
+        )
+    return found
+
+
+def _merge_results(primary: list, secondary: list) -> list:
+    """Combine two result lists; for overlapping spans keep the higher-confidence one."""
+    combined = list(primary) + list(secondary)
+    combined.sort(key=lambda r: r.score, reverse=True)
+    kept = []
+    for result in combined:
+        if not any(
+            max(result.start, r.start) < min(result.end, r.end)
+            for r in kept
+        ):
+            kept.append(result)
+    return kept
+
+
+def _filter_false_positives(results: list, text: str) -> list:
+    """Drop known false-positive patterns before anonymization."""
+    out = []
+    for r in results:
+        chunk = text[r.start : r.end]
+        stripped = chunk.strip()
+        # Years like "2024" tagged as LOCATION
+        if r.entity_type in ("LOCATION", "NO_ADDRESS") and _YEAR_RE.match(stripped):
             continue
-    raise RuntimeError(
-        "No spaCy model found. Run inside Docker or: "
-        "python -m spacy download nb_core_news_lg"
-    )
+        if r.entity_type == "NO_ADDRESS" and _YEAR_RE_START.match(stripped):
+            continue
+        # Short ID codes like "KN-002" tagged as LOCATION/PERSON
+        if r.entity_type in ("LOCATION", "PERSON", "NRP") and _ID_RE.match(stripped):
+            continue
+        # ALL-CAPS abbreviations (DNS, API, …) tagged as PERSON/NRP
+        if r.entity_type in ("PERSON", "NRP") and len(stripped) >= 2 and stripped.isupper():
+            continue
+        out.append(r)
+    return out
 
 
 class AnonymizerCore:
-    """Presidio-backed PII anonymization engine with Norwegian extensions."""
+    """Dual-language (Norwegian + English) PII anonymization engine."""
 
     def __init__(self):
-        model = _pick_spacy_model()
+        models = _load_available_models()
+        lang_codes = {m["lang_code"] for m in models}
+
         nlp_engine = NlpEngineProvider(
             nlp_configuration={
                 "nlp_engine_name": "spacy",
-                "models": [{"lang_code": "en", "model_name": model}],
+                "models": models,
             }
         ).create_engine()
 
@@ -95,34 +138,43 @@ class AnonymizerCore:
 
         self._analyzer = AnalyzerEngine(nlp_engine=nlp_engine, registry=registry)
         self._anonymizer = AnonymizerEngine()
+        self._has_nb = "nb" in lang_codes
+        self._has_en = "en" in lang_codes
         self._operators: Dict[str, OperatorConfig] = {
             entity_type: OperatorConfig("replace", {"new_value": placeholder})
             for entity_type, placeholder in ENTITY_TO_PLACEHOLDER.items()
         }
 
     def analyze(self, text: str) -> list:
-        """Return raw Presidio results with character-span positions."""
-        results = self._analyzer.analyze(
-            text=text,
-            language="en",
-            entities=ENTITIES,
-            score_threshold=CONFIDENCE_THRESHOLD,
-        )
-        # Drop years misclassified as LOCATION/NO_ADDRESS by the NER/postal-code recognizer
-        # Drop technical abbreviations (IP, DNS, …) misclassified as PERSON/NRP
-        filtered = []
-        for r in results:
-            chunk = text[r.start:r.end]
-            if r.entity_type == "LOCATION" and _YEAR_RE.match(chunk.strip()):
-                continue
-            if r.entity_type in ("LOCATION", "PERSON", "NRP") and _ID_RE.match(chunk.strip()):
-                continue
-            if r.entity_type == "NO_ADDRESS" and _YEAR_RE_START.match(chunk.strip()):
-                continue
-            if r.entity_type in ("PERSON", "NRP") and len(chunk) >= 2 and chunk[0].isupper() and chunk[1].isupper():
-                continue
-            filtered.append(r)
-        return filtered
+        """
+        Run PII analysis in all available languages and merge results.
+        English pass: all pattern recognizers + English NER.
+        Norwegian pass: Norwegian NER (catches names/places the English model misses).
+        """
+        results: list = []
+
+        if self._has_en:
+            results = list(
+                self._analyzer.analyze(
+                    text=text,
+                    language="en",
+                    entities=ENTITIES,
+                    score_threshold=CONFIDENCE_THRESHOLD,
+                )
+            )
+
+        if self._has_nb:
+            # Norwegian model adds PER/LOC/ORG entities missed by the English model.
+            # Pattern recognizers (phone, fnr, email…) are already covered by the en pass.
+            nb_results = self._analyzer.analyze(
+                text=text,
+                language="nb",
+                entities=["PERSON", "LOCATION", "NRP"],
+                score_threshold=CONFIDENCE_THRESHOLD,
+            )
+            results = _merge_results(results, list(nb_results))
+
+        return _filter_false_positives(results, text)
 
     def anonymize_text(self, text: str) -> Tuple[str, Dict[str, int]]:
         """
