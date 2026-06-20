@@ -64,7 +64,7 @@ def cli(filepath: Path, output_dir: str) -> None:
     stem = input_path.stem
     output_path = out_dir / f"{stem}_anonymized_{timestamp}{suffix}"
 
-    # ── Pre-flight checks (fast — no engine needed) ──────────────────────
+    # ── Pre-flight checks (fast regex scan — no engine needed) ───────────
     click.echo("Analyserer fil ...", err=True)
     detected_lang = detect_language(input_path, suffix)
     lang_warning = not lang_is_supported(detected_lang)
@@ -78,9 +78,6 @@ def cli(filepath: Path, output_dir: str) -> None:
             "for PII for den deles med Claude.\n",
             err=True,
         )
-
-    if article9_categories:
-        _article9_warning(article9_categories)
 
     # ── Anonymization ─────────────────────────────────────────────────────
     click.echo("Laster anonymiseringsmotor ...", err=True)
@@ -120,7 +117,7 @@ def cli(filepath: Path, output_dir: str) -> None:
 
     click.echo(f"\nAnonymisert fil: {output_path}")
 
-    # Repeat critical warnings at the end so they aren't buried above engine output
+    # ── Post-processing warnings (shown once, after results) ──────────────
     if article9_categories:
         _article9_warning(article9_categories)
     elif lang_warning:
