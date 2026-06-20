@@ -5,6 +5,15 @@ import openpyxl
 
 from ..column_rules import placeholder_for_header
 from ..engine import AnonymizerCore
+from ..media import PLACEHOLDER_IMAGE
+
+
+def _remove_images(sheet, stats: Dict[str, int]) -> None:
+    """Remove all embedded images from a worksheet."""
+    if hasattr(sheet, "_images") and sheet._images:
+        count = len(sheet._images)
+        sheet._images.clear()
+        stats[PLACEHOLDER_IMAGE] = stats.get(PLACEHOLDER_IMAGE, 0) + count
 
 
 def process(input_path: Path, output_path: Path, engine: AnonymizerCore) -> Dict[str, int]:
@@ -12,9 +21,8 @@ def process(input_path: Path, output_path: Path, engine: AnonymizerCore) -> Dict
     wb = openpyxl.load_workbook(input_path)
 
     for sheet in wb.worksheets:
-        # Build two column maps from row 1:
-        #   col_forced[col]  → placeholder to use for the ENTIRE column (header match)
-        #   col_headers[col] → header text for Presidio context boost
+        _remove_images(sheet, stats)
+
         col_forced: Dict[int, str] = {}
         col_headers: Dict[int, str] = {}
 
@@ -32,13 +40,11 @@ def process(input_path: Path, output_path: Path, engine: AnonymizerCore) -> Dict
                 if not isinstance(cell.value, str) or not cell.value.strip():
                     continue
 
+                if row_idx == 1:
+                    continue  # never anonymize the header row itself
+
                 value = cell.value
 
-                # Row 1 is the header row — never anonymize the headers themselves
-                if row_idx == 1:
-                    continue
-
-                # Forced anonymization: column header unambiguously names a PII type
                 forced = col_forced.get(cell.column)
                 if forced:
                     if value != forced:
@@ -46,7 +52,6 @@ def process(input_path: Path, output_path: Path, engine: AnonymizerCore) -> Dict
                         cell.value = forced
                     continue
 
-                # Standard Presidio pass with column-header context boost
                 header_text = col_headers.get(cell.column, "")
                 if header_text:
                     text = f"{header_text}: {value}"

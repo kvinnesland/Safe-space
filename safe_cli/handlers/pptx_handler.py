@@ -1,10 +1,62 @@
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from pptx import Presentation
+from pptx.dml.color import RGBColor
+from pptx.enum.shapes import MSO_SHAPE_TYPE
+from pptx.util import Pt
 
 from ..column_rules import placeholder_for_header
 from ..engine import AnonymizerCore
+from ..media import PLACEHOLDER_IMAGE, PLACEHOLDER_VIDEO, PLACEHOLDER_AUDIO, PLACEHOLDER_MEDIA
+
+# python-pptx media type constants (from pptx.enum.shapes PP_MEDIA_TYPE)
+_AUDIO_MIME_PREFIXES = ("audio/",)
+_VIDEO_MIME_PREFIXES = ("video/",)
+
+
+def _media_label(shape) -> str:
+    """Return the right placeholder label for a media shape."""
+    try:
+        mime = shape.media_format.mime_type or ""
+        if mime.startswith("audio/"):
+            return PLACEHOLDER_AUDIO
+        if mime.startswith("video/"):
+            return PLACEHOLDER_VIDEO
+    except Exception:
+        pass
+    return PLACEHOLDER_MEDIA
+
+
+def _replace_with_placeholder(slide, shape, label: str, stats: Dict[str, int]) -> None:
+    """Remove a shape and insert a grey text box with the placeholder label."""
+    left, top, width, height = shape.left, shape.top, shape.width, shape.height
+    shape._element.getparent().remove(shape._element)
+
+    txBox = slide.shapes.add_textbox(left, top, width, height)
+    txBox.fill.solid()
+    txBox.fill.fore_color.rgb = RGBColor(0xCC, 0xCC, 0xCC)
+
+    tf = txBox.text_frame
+    tf.word_wrap = True
+    run = tf.paragraphs[0].add_run()
+    run.text = label
+    run.font.size = Pt(8)
+
+    stats[label] = stats.get(label, 0) + 1
+
+
+def _remove_media_shapes(slide, stats: Dict[str, int]) -> None:
+    """Replace all image, GIF, video, and audio shapes with grey placeholders."""
+    to_replace: List = []
+    for shape in slide.shapes:
+        if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+            to_replace.append((shape, PLACEHOLDER_IMAGE))
+        elif shape.shape_type == MSO_SHAPE_TYPE.MEDIA:
+            to_replace.append((shape, _media_label(shape)))
+
+    for shape, label in to_replace:
+        _replace_with_placeholder(slide, shape, label, stats)
 
 
 def _anonymize_text_frame(
@@ -41,11 +93,9 @@ def _process_table(table, engine: AnonymizerCore, stats: Dict[str, int]) -> None
     if not rows:
         return
 
-    # Build forced-placeholder map from first row (header row)
     col_forced: Dict[int, Optional[str]] = {}
     for col_idx, cell in enumerate(rows[0].cells):
-        header = cell.text_frame.text.strip()
-        col_forced[col_idx] = placeholder_for_header(header)
+        col_forced[col_idx] = placeholder_for_header(cell.text_frame.text.strip())
 
     for row_idx, row in enumerate(rows):
         for col_idx, cell in enumerate(row.cells):
@@ -58,6 +108,9 @@ def process(input_path: Path, output_path: Path, engine: AnonymizerCore) -> Dict
     prs = Presentation(str(input_path))
 
     for slide in prs.slides:
+        # Remove media shapes first (before iterating text frames)
+        _remove_media_shapes(slide, stats)
+
         for shape in slide.shapes:
             if shape.has_text_frame:
                 _anonymize_text_frame(shape.text_frame, engine, stats)

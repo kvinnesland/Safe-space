@@ -12,6 +12,7 @@ from .audit_log import AuditLogger
 from .engine import AnonymizerCore
 from .handlers import get_handler
 from .language import detect as detect_language, is_supported as lang_is_supported
+from .media import STANDALONE_MEDIA_EXT, standalone_warning
 
 DEFAULT_OUTPUT_DIR = Path("/app/safe-output")
 DEFAULT_LOG_DIR = DEFAULT_OUTPUT_DIR / "logs"
@@ -52,10 +53,17 @@ def cli(filepath: Path, output_dir: str) -> None:
     log_dir = out_dir / "logs"
 
     suffix = input_path.suffix.lower()
+
+    # Standalone media files cannot be automatically anonymized
+    if suffix in STANDALONE_MEDIA_EXT:
+        click.echo(standalone_warning(suffix))
+        sys.exit(2)
+
     handler = get_handler(suffix)
     if handler is None:
         click.echo(
-            f"Unsupported format '{suffix}'. Supported: .txt .csv .xlsx .docx .pdf .pptx",
+            f"Ikke stottet format '{suffix}'. Stottede formater: "
+            ".txt .csv .xlsx .docx .pdf .pptx",
             err=True,
         )
         sys.exit(1)
