@@ -5,7 +5,7 @@
 # Output: anonymized copy written to ./safe-output/
 #
 # The original file is NEVER modified. All processing is local.
-# Supports: .txt  .csv  .xlsx  .docx  .pdf
+# Supports: .txt  .csv  .xlsx  .docx  .pdf  .pptx
 
 set -euo pipefail
 
@@ -16,7 +16,7 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" || -z "${1:-}" ]]; then
     echo "Usage: safe <filepath>"
     echo ""
     echo "Anonymizes PII in the file and writes output to $OUTPUT_DIR"
-    echo "Supported formats: .txt  .csv  .xlsx  .docx  .pdf"
+    echo "Supported formats: .txt  .csv  .xlsx  .docx  .pdf  .pptx"
     exit 0
 fi
 

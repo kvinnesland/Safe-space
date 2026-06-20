@@ -4,10 +4,13 @@ from typing import Dict
 import fitz  # PyMuPDF
 
 from ..engine import AnonymizerCore, ENTITY_TO_PLACEHOLDER
-from ..media import PLACEHOLDER_IMAGE, PLACEHOLDER_VIDEO, PLACEHOLDER_AUDIO
+from ..media import PLACEHOLDER_IMAGE, PLACEHOLDER_VIDEO, PLACEHOLDER_AUDIO, PLACEHOLDER_COMMENT
 
 # PDF annotation type names that indicate multimedia content
 _MULTIMEDIA_ANNOT_TYPES = {"Screen", "Sound", "Movie", "RichMedia"}
+# PDF annotation types that can contain reviewer names or PII text
+_COMMENT_ANNOT_TYPES = {"Text", "FreeText", "Popup", "Highlight", "Underline",
+                        "Squiggly", "StrikeOut", "Stamp", "Caret", "Ink", "FileAttachment"}
 
 
 def _redact_images(page, stats: Dict[str, int]) -> None:
@@ -26,16 +29,21 @@ def _redact_images(page, stats: Dict[str, int]) -> None:
         stats[PLACEHOLDER_IMAGE] = stats.get(PLACEHOLDER_IMAGE, 0) + 1
 
 
-def _remove_multimedia_annotations(page, stats: Dict[str, int]) -> None:
-    """Delete Screen/Sound/Movie/RichMedia annotations (embedded video & audio)."""
+def _remove_annotations(page, stats: Dict[str, int]) -> None:
+    """Delete multimedia and comment annotations.
+
+    Multimedia (Screen/Sound/Movie/RichMedia) are replaced with media placeholders.
+    Comment annotations (Text, FreeText, Highlight, etc.) are deleted outright —
+    they often contain reviewer names and are not part of the document content.
+    """
     for annot in list(page.annots()):
         type_name = annot.type[1] if len(annot.type) > 1 else ""
         if type_name in _MULTIMEDIA_ANNOT_TYPES:
-            if type_name == "Sound":
-                label = PLACEHOLDER_AUDIO
-            else:
-                label = PLACEHOLDER_VIDEO
+            label = PLACEHOLDER_AUDIO if type_name == "Sound" else PLACEHOLDER_VIDEO
             stats[label] = stats.get(label, 0) + 1
+            page.delete_annot(annot)
+        elif type_name in _COMMENT_ANNOT_TYPES:
+            stats[PLACEHOLDER_COMMENT] = stats.get(PLACEHOLDER_COMMENT, 0) + 1
             page.delete_annot(annot)
 
 
@@ -51,10 +59,20 @@ def process(input_path: Path, output_path: Path, engine: AnonymizerCore) -> Dict
         doc.close()
         raise RuntimeError("PDF is password-protected; cannot anonymize.")
 
+    # Clear PDF metadata (author, creator, producer, etc.)
+    doc.set_metadata({
+        "title": "", "author": "", "subject": "",
+        "keywords": "", "creator": "", "producer": "",
+    })
+    try:
+        doc.del_xml_metadata()
+    except Exception:
+        pass
+
     for page in doc:
-        # 1. Redact embedded images and multimedia annotations
+        # 1. Redact embedded images; delete comment and multimedia annotations
         _redact_images(page, stats)
-        _remove_multimedia_annotations(page, stats)
+        _remove_annotations(page, stats)
 
         # 2. Redact PII in text — apply with image pixel removal so redacted
         #    image areas are fully cleared (not just annotated)

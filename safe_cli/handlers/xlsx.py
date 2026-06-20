@@ -5,7 +5,18 @@ import openpyxl
 
 from ..column_rules import placeholder_for_header
 from ..engine import AnonymizerCore
-from ..media import PLACEHOLDER_IMAGE
+from ..media import PLACEHOLDER_IMAGE, PLACEHOLDER_COMMENT
+
+
+def _strip_metadata(wb) -> None:
+    """Clear workbook properties that may contain PII (author, company, etc.)."""
+    props = wb.properties
+    for attr in ("creator", "lastModifiedBy", "description", "subject",
+                 "title", "keywords", "category", "company"):
+        try:
+            setattr(props, attr, "")
+        except Exception:
+            pass
 
 
 def _remove_images(sheet, stats: Dict[str, int]) -> None:
@@ -21,12 +32,24 @@ def _remove_images(sheet, stats: Dict[str, int]) -> None:
         stats[PLACEHOLDER_IMAGE] = stats.get(PLACEHOLDER_IMAGE, 0) + count
 
 
+def _remove_cell_comments(sheet, stats: Dict[str, int]) -> None:
+    """Remove all cell comments (notes) from a worksheet."""
+    for row in sheet.iter_rows():
+        for cell in row:
+            if getattr(cell, "comment", None) is not None:
+                cell.comment = None
+                stats[PLACEHOLDER_COMMENT] = stats.get(PLACEHOLDER_COMMENT, 0) + 1
+
+
 def process(input_path: Path, output_path: Path, engine: AnonymizerCore) -> Dict[str, int]:
     stats: Dict[str, int] = {}
     wb = openpyxl.load_workbook(input_path)
 
+    _strip_metadata(wb)
+
     for sheet in wb.worksheets:
         _remove_images(sheet, stats)
+        _remove_cell_comments(sheet, stats)
 
         col_forced: Dict[int, str] = {}
         col_headers: Dict[int, str] = {}

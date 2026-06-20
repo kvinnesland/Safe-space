@@ -10,9 +10,16 @@ from ..column_rules import placeholder_for_header
 from ..engine import AnonymizerCore
 from ..media import PLACEHOLDER_IMAGE, PLACEHOLDER_VIDEO, PLACEHOLDER_AUDIO, PLACEHOLDER_MEDIA
 
-# python-pptx media type constants (from pptx.enum.shapes PP_MEDIA_TYPE)
-_AUDIO_MIME_PREFIXES = ("audio/",)
-_VIDEO_MIME_PREFIXES = ("video/",)
+
+def _strip_metadata(prs) -> None:
+    """Clear presentation properties that may contain PII (author, company, etc.)."""
+    props = prs.core_properties
+    for attr in ("author", "last_modified_by", "comments", "subject",
+                 "title", "keywords", "category", "identifier"):
+        try:
+            setattr(props, attr, "")
+        except Exception:
+            pass
 
 
 def _media_label(shape) -> str:
@@ -107,6 +114,8 @@ def process(input_path: Path, output_path: Path, engine: AnonymizerCore) -> Dict
     stats: Dict[str, int] = {}
     prs = Presentation(str(input_path))
 
+    _strip_metadata(prs)
+
     for slide in prs.slides:
         # Snapshot shapes before media removal; _remove_media_shapes adds new
         # placeholder textboxes that must not be passed through anonymization.
@@ -118,6 +127,12 @@ def process(input_path: Path, output_path: Path, engine: AnonymizerCore) -> Dict
                 _anonymize_text_frame(shape.text_frame, engine, stats)
             if shape.has_table:
                 _process_table(shape.table, engine, stats)
+
+        # Anonymize speaker notes (common location for names and contact info)
+        if slide.has_notes_slide:
+            _anonymize_text_frame(
+                slide.notes_slide.notes_text_frame, engine, stats
+            )
 
     prs.save(str(output_path))
     return stats

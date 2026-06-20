@@ -7,7 +7,87 @@ from docx.oxml.ns import qn
 
 from ..column_rules import placeholder_for_header
 from ..engine import AnonymizerCore
-from ..media import PLACEHOLDER_IMAGE, PLACEHOLDER_MEDIA
+from ..media import PLACEHOLDER_IMAGE, PLACEHOLDER_MEDIA, PLACEHOLDER_COMMENT
+
+_APP_PROPS_REL = (
+    "http://schemas.openxmlformats.org/officeDocument/2006/"
+    "relationships/extended-properties"
+)
+_APP_PROPS_NS = (
+    "http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"
+)
+_COMMENTS_REL = (
+    "http://schemas.openxmlformats.org/officeDocument/2006/"
+    "relationships/comments"
+)
+
+
+def _strip_metadata(doc) -> None:
+    """Clear document properties that may contain PII (author, company, etc.)."""
+    props = doc.core_properties
+    for attr in ("author", "last_modified_by", "comments", "subject",
+                 "title", "keywords", "category", "identifier"):
+        try:
+            setattr(props, attr, "")
+        except Exception:
+            pass
+
+    # Clear Company and Manager from word/app.xml (not exposed by python-docx API)
+    try:
+        app_part = doc.part.part_related_by(_APP_PROPS_REL)
+        for tag in ("Company", "Manager", "Template"):
+            for el in app_part._element.iter(f"{{{_APP_PROPS_NS}}}{tag}"):
+                el.text = ""
+    except Exception:
+        pass
+
+
+def _accept_tracked_changes(body) -> None:
+    """Strip tracked changes: discard deleted content, unwrap accepted insertions."""
+    # Remove deleted and moved-from content entirely
+    for tag in (qn("w:del"), qn("w:moveFrom")):
+        for el in list(body.iter(tag)):
+            parent = el.getparent()
+            if parent is not None:
+                parent.remove(el)
+
+    # Unwrap accepted insertions and move-to targets: move child runs to parent
+    for tag in (qn("w:ins"), qn("w:moveTo")):
+        for el in list(body.iter(tag)):
+            parent = el.getparent()
+            if parent is None:
+                continue
+            idx = list(parent).index(el)
+            children = list(el)
+            for child in children:
+                el.remove(child)
+            parent.remove(el)
+            for i, child in enumerate(children):
+                parent.insert(idx + i, child)
+
+
+def _remove_comments(doc, stats: Dict[str, int]) -> None:
+    """Remove all Word comments: clear comment content and strip anchors from body."""
+    # Remove comment anchors from the entire document XML (body + headers/footers)
+    for tag in ("w:commentRangeStart", "w:commentRangeEnd", "w:commentReference"):
+        for el in list(doc.element.iter(qn(tag))):
+            count = 1
+            parent = el.getparent()
+            if parent is not None:
+                parent.remove(el)
+                if tag == "w:commentRangeStart":
+                    stats[PLACEHOLDER_COMMENT] = (
+                        stats.get(PLACEHOLDER_COMMENT, 0) + count
+                    )
+
+    # Clear the comments part (comments.xml) if present
+    try:
+        comments_part = doc.part.part_related_by(_COMMENTS_REL)
+        root = comments_part._element
+        for child in list(root):
+            root.remove(child)
+    except Exception:
+        pass
 
 
 def _remove_embedded_media(body, stats: Dict[str, int]) -> None:
@@ -31,7 +111,6 @@ def _remove_embedded_media(body, stats: Dict[str, int]) -> None:
     for drawing in list(body.iter(qn("w:drawing"))):
         run = _find_run_ancestor(drawing)
         if run is not None:
-            # Remove the drawing (or its mc:AlternateContent wrapper) from the run
             child_to_remove = drawing
             p = drawing.getparent()
             while p is not None and p is not run:
@@ -43,8 +122,6 @@ def _remove_embedded_media(body, stats: Dict[str, int]) -> None:
             t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
             run.append(t)
         else:
-            # No enclosing run — drawing is a direct child of a paragraph or body.
-            # Replace it with a new run containing the placeholder text.
             parent = drawing.getparent()
             if parent is None:
                 continue
@@ -89,7 +166,6 @@ def _remove_embedded_media(body, stats: Dict[str, int]) -> None:
     # Legacy VML images (older Word files)
     vml_ns = "urn:schemas-microsoft-com:vml"
     for imagedata in list(body.iter(f"{{{vml_ns}}}imagedata")):
-        # Remove the whole <v:shape> ancestor if possible, else just imagedata
         shape = imagedata.getparent()
         while shape is not None and shape.tag != f"{{{vml_ns}}}shape":
             shape = shape.getparent()
@@ -150,7 +226,16 @@ def process(input_path: Path, output_path: Path, engine: AnonymizerCore) -> Dict
     stats: Dict[str, int] = {}
     doc = Document(str(input_path))
 
-    # Remove all embedded media first (images, GIFs, video, audio)
+    # 1. Clear document metadata (author, company, etc.)
+    _strip_metadata(doc)
+
+    # 2. Strip tracked changes: remove deleted text, accept insertions
+    _accept_tracked_changes(doc.element.body)
+
+    # 3. Remove comments
+    _remove_comments(doc, stats)
+
+    # 4. Remove embedded media
     _remove_embedded_media(doc.element.body, stats)
 
     for para in doc.paragraphs:
@@ -166,6 +251,7 @@ def process(input_path: Path, output_path: Path, engine: AnonymizerCore) -> Dict
             section.even_page_header, section.even_page_footer,
         ):
             if hf is not None:
+                _accept_tracked_changes(hf._element)
                 _remove_embedded_media(hf._element, stats)
                 for para in hf.paragraphs:
                     _anonymize_paragraph(para, engine, stats)
