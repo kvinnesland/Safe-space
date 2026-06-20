@@ -102,7 +102,20 @@ _CATEGORIES = [
         "fagforeningsmedlemskap",
         [re.compile(
             r"\b(fagforening|fagforeining|fagforbund|fagorganisert|"
-            r"LO|YS|Unio|Akademikerne|"
+            # Hovedorganisasjoner
+            r"LO|YS|Unio|Akademikerne|NITO|"
+            # Enkeltforbund — LO
+            r"Fagforbundet|Fellesforbundet|Industri[\s-]Energi|"
+            r"El[\s-]og[\s-]IT[\s-]Forbundet|Handel[\s-]og[\s-]Kontor|"
+            r"Fellesorganisasjonen|Transportarbeiderforbundet|"
+            # Enkeltforbund — Unio
+            r"Utdanningsforbundet|Sykepleierforbundet|Politiets[\s-]Fellesforbund|"
+            r"Norsk[\s-]Tjenestemannslag|"
+            # Enkeltforbund — Akademikerne
+            r"Legeforeningen|Den[\s-]norske[\s-]legeforening|Tekna|Juristforbundet|"
+            # Enkeltforbund — YS
+            r"Finansforbundet|Negotia|"
+            # Generelle termer
             r"tillitsvalgt|tillitsvald|streik(?:erett|rett)?|tariffavtale|"
             r"kollektiv\s+avtale|fagforeningskontingent|"
             r"trade[\s-]?union|labor[\s-]?union|labour[\s-]?union|"
