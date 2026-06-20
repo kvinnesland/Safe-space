@@ -9,6 +9,7 @@ import click
 from .audit_log import AuditLogger
 from .engine import AnonymizerCore
 from .handlers import get_handler
+from .language import detect as detect_language, is_supported as lang_is_supported
 
 DEFAULT_OUTPUT_DIR = Path("/app/safe-output")
 DEFAULT_LOG_DIR = DEFAULT_OUTPUT_DIR / "logs"
@@ -45,7 +46,20 @@ def cli(filepath: Path, output_dir: str) -> None:
     stem = input_path.stem
     output_path = out_dir / f"{stem}_anonymized_{timestamp}{suffix}"
 
-    click.echo(f"Loading engine ...", err=True)
+    click.echo("Detecting language ...", err=True)
+    detected_lang = detect_language(input_path, suffix)
+    lang_warning = not lang_is_supported(detected_lang)
+
+    if lang_warning:
+        click.echo(
+            f"\nADVARSEL: Filen ser ut til å være på '{detected_lang}', "
+            "som ikke er fullt dekket av anonymiseringsmotoren.\n"
+            "Anonymisering gjennomføres, men output-filen MA sjekkes manuelt "
+            "for PII før den deles med Claude.\n",
+            err=True,
+        )
+
+    click.echo("Loading engine ...", err=True)
     engine = AnonymizerCore()
 
     click.echo(f"Anonymizing {input_path.name} ...", err=True)
@@ -56,11 +70,20 @@ def cli(filepath: Path, output_dir: str) -> None:
     except Exception as exc:
         status = "error"
         error = str(exc)
-        AuditLogger(log_dir).log(input_path, output_path, {}, status=status, error=error)
+        AuditLogger(log_dir).log(
+            input_path, output_path, {},
+            status=status, error=error,
+            detected_language=detected_lang, language_warning=lang_warning,
+        )
         click.echo(f"Error: {exc}", err=True)
         sys.exit(1)
 
-    AuditLogger(log_dir).log(input_path, output_path, stats, status=status)
+    AuditLogger(log_dir).log(
+        input_path, output_path, stats,
+        status=status,
+        detected_language=detected_lang,
+        language_warning=lang_warning,
+    )
 
     total = sum(stats.values())
     click.echo(f"\nReplaced {total} PII item(s):")
@@ -68,6 +91,11 @@ def cli(filepath: Path, output_dir: str) -> None:
         click.echo(f"  {label}: {count}")
 
     click.echo(f"\nAnonymized file: {output_path}")
+
+    if lang_warning:
+        click.echo(
+            f"\nHUSK: Filen var pa '{detected_lang}' — sjekk output manuelt for PII."
+        )
 
 
 if __name__ == "__main__":
