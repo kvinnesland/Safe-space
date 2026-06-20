@@ -1,9 +1,24 @@
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 import openpyxl
 
+from ..column_rules import placeholder_for_header
 from ..engine import AnonymizerCore
+from ..media import PLACEHOLDER_IMAGE
+
+
+def _remove_images(sheet, stats: Dict[str, int]) -> None:
+    """Remove all embedded images from a worksheet.
+
+    Excel images float over cells rather than sitting in them, so removal
+    leaves blank space with no visual placeholder — unlike DOCX and PPTX.
+    The audit log and summary output record the count of removed images.
+    """
+    if hasattr(sheet, "_images") and sheet._images:
+        count = len(sheet._images)
+        sheet._images.clear()
+        stats[PLACEHOLDER_IMAGE] = stats.get(PLACEHOLDER_IMAGE, 0) + count
 
 
 def process(input_path: Path, output_path: Path, engine: AnonymizerCore) -> Dict[str, int]:
@@ -11,29 +26,45 @@ def process(input_path: Path, output_path: Path, engine: AnonymizerCore) -> Dict
     wb = openpyxl.load_workbook(input_path)
 
     for sheet in wb.worksheets:
-        # Capture column headers from row 1 (lowercased) for context-boosted recognition
+        _remove_images(sheet, stats)
+
+        col_forced: Dict[int, str] = {}
         col_headers: Dict[int, str] = {}
+
         for cell in next(sheet.iter_rows(min_row=1, max_row=1), []):
-            if isinstance(cell.value, str) and cell.value.strip():
-                col_headers[cell.column] = cell.value.strip().lower()
+            if not isinstance(cell.value, str) or not cell.value.strip():
+                continue
+            header = cell.value.strip()
+            forced = placeholder_for_header(header)
+            if forced:
+                col_forced[cell.column] = forced
+            col_headers[cell.column] = header.lower()
 
         for row_idx, row in enumerate(sheet.iter_rows(), start=1):
             for cell in row:
                 if not isinstance(cell.value, str) or not cell.value.strip():
                     continue
 
-                value = cell.value
-                header = col_headers.get(cell.column, "")
+                if row_idx == 1:
+                    continue  # never anonymize the header row itself
 
-                if header and row_idx > 1:
-                    # Prepend column header so recognizers with context lists get the boost
-                    text = f"{header}: {value}"
-                    anonymized_text, cell_stats = engine.anonymize_text(text)
-                    prefix = f"{header}: "
-                    if anonymized_text.startswith(prefix):
-                        anonymized = anonymized_text[len(prefix):]
+                value = cell.value
+
+                forced = col_forced.get(cell.column)
+                if forced:
+                    if value != forced:
+                        stats[forced] = stats.get(forced, 0) + 1
+                        cell.value = forced
+                    continue
+
+                header_text = col_headers.get(cell.column, "")
+                if header_text:
+                    text = f"{header_text}: {value}"
+                    anon_text, cell_stats = engine.anonymize_text(text)
+                    prefix = f"{header_text}: "
+                    if anon_text.startswith(prefix):
+                        anonymized = anon_text[len(prefix):]
                     else:
-                        # Prefix was modified — re-run without it to avoid corrupt output
                         anonymized, cell_stats = engine.anonymize_text(value)
                 else:
                     anonymized, cell_stats = engine.anonymize_text(value)
