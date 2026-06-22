@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# safe — anonymize a file before passing it to Claude
+# safe — anonymiser en fil før den sendes til Claude
 #
-# Usage:  ./safe <filepath>
-# Output: anonymized copy written to ./safe-output/
+# Bruk:    ./safe <filbane>
+# Output:  anonymisert kopi skrives til ./safe-output/
 #
-# The original file is NEVER modified. All processing is local.
-# Supports: .txt  .csv  .xlsx  .docx  .pdf  .pptx
+# Originalfilen berøres aldri. All behandling skjer lokalt.
+# Støttede formater: .txt  .csv  .xlsx  .docx  .pdf  .pptx
 
 set -euo pipefail
 
@@ -13,52 +13,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUTPUT_DIR="$SCRIPT_DIR/safe-output"
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" || -z "${1:-}" ]]; then
-    echo "Usage: safe <filepath>"
+    echo "Bruk: ./safe <filbane>"
     echo ""
-    echo "Anonymizes PII in the file and writes output to $OUTPUT_DIR"
-    echo "Supported formats: .txt  .csv  .xlsx  .docx  .pdf  .pptx"
+    echo "Anonymiserer PII i filen og skriver output til $OUTPUT_DIR"
+    echo "Støttede formater: .txt  .csv  .xlsx  .docx  .pdf  .pptx"
     exit 0
 fi
 
-INPUT="$1"
-
-# Resolve to absolute path (works on macOS and Linux)
-if command -v realpath &>/dev/null; then
-    INPUT_ABS="$(realpath "$INPUT")"
-elif command -v readlink &>/dev/null && readlink -f "$INPUT" &>/dev/null; then
-    INPUT_ABS="$(readlink -f "$INPUT")"
-else
-    INPUT_ABS="$(cd "$(dirname "$INPUT")" && pwd)/$(basename "$INPUT")"
-fi
+INPUT_ABS="$(realpath "${1}")"
 
 if [[ ! -f "$INPUT_ABS" ]]; then
-    echo "Error: file not found: $INPUT" >&2
+    echo "Feil: filen finnes ikke: $1" >&2
     exit 1
 fi
 
-INPUT_DIR="$(dirname "$INPUT_ABS")"
-INPUT_NAME="$(basename "$INPUT_ABS")"
+mkdir -p "$OUTPUT_DIR/logs"
 
-mkdir -p "$OUTPUT_DIR"
-
-# On Windows/Git Bash: convert host paths to Windows format before disabling
-# MSYS path conversion, so container-internal paths pass through unchanged.
-if command -v cygpath &>/dev/null; then
-    SCRIPT_DIR_D="$(cygpath -w "$SCRIPT_DIR")"
-    INPUT_DIR_D="$(cygpath -w "$INPUT_DIR")"
-    OUTPUT_DIR_D="$(cygpath -w "$OUTPUT_DIR")"
-    export MSYS_NO_PATHCONV=1
-    export MSYS2_ARG_CONV_EXCL="*"
-else
-    SCRIPT_DIR_D="$SCRIPT_DIR"
-    INPUT_DIR_D="$INPUT_DIR"
-    OUTPUT_DIR_D="$OUTPUT_DIR"
-fi
-
-# Mount the input file's directory read-only so any path works
-# (local disk, OneDrive sync folder, SharePoint mount, NAS, etc.)
-exec docker compose -f "$SCRIPT_DIR_D/docker-compose.yml" run --rm \
-    -v "$INPUT_DIR_D:/safe_input:ro" \
-    -v "$OUTPUT_DIR_D:/app/safe-output" \
-    safe "/safe_input/$INPUT_NAME" \
-    --output-dir /app/safe-output
+python -m safe_cli.main "$INPUT_ABS" --output-dir "$OUTPUT_DIR"

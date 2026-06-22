@@ -3,7 +3,10 @@
 import re
 from typing import List, Optional
 
-from presidio_analyzer import Pattern, PatternRecognizer
+from presidio_analyzer import Pattern, PatternRecognizer, RecognizerResult
+from presidio_analyzer.nlp_engine import NlpArtifacts
+
+from .name_lists import NORWEGIAN_NAMES, NORWEGIAN_COMMON_WORDS
 
 
 def _validate_fodselsnummer(digits: str) -> bool:
@@ -209,6 +212,20 @@ class NorwegianPostalAddressRecognizer(PatternRecognizer):
             supported_language="en",
         )
 
+    def validate_result(self, pattern_text: str) -> Optional[bool]:
+        parts = pattern_text.strip().split(maxsplit=1)
+        if len(parts) < 2:
+            return None
+        city = parts[1].strip()
+        # ALL-CAPS after a number is an abbreviation (GNR, BNR, TG, ...), not a city
+        if city.split()[0].isupper():
+            return False
+        # If the first city word is a common Norwegian word, it's not a city
+        first_word = city.split()[0].lower()
+        if first_word in NORWEGIAN_COMMON_WORDS:
+            return False
+        return None
+
 
 _MONTHS_NO = (
     "januar|februar|mars|april|mai|juni|juli|"
@@ -359,6 +376,43 @@ class NorwegianHyphenatedNameRecognizer(PatternRecognizer):
         )
 
 
+class NorwegianNameListRecognizer(PatternRecognizer):
+    """Detect Norwegian first names and surnames from a curated name list.
+
+    Complements NER by catching names the statistical model misses, especially
+    single-word first names that appear without surrounding context.
+    Score of 0.6 is intentionally below NER (0.85) so NER wins on conflicts,
+    but high enough to survive the 0.4 threshold and appear in results.
+    """
+
+    # Build alternation regex from the name list at class definition time.
+    # Sort longest-first so the regex engine tries longer matches first.
+    _names_sorted = sorted(NORWEGIAN_NAMES, key=len, reverse=True)
+    _pattern_str = r"\b(?:" + "|".join(re.escape(n) for n in _names_sorted) + r")\b"
+
+    PATTERNS = [Pattern("NO name list", _pattern_str, 0.6)]
+    CONTEXT = [
+        "navn", "kontakt", "fra", "til", "herr", "fru",
+        "eier", "selger", "kjøper", "leietaker", "utleier",
+        "signert", "underskrevet", "attestert", "referent",
+        "lege", "megler", "advokat", "revisor",
+    ]
+
+    def __init__(self):
+        super().__init__(
+            supported_entity="PERSON",
+            patterns=self.PATTERNS,
+            context=self.CONTEXT,
+            supported_language="en",
+        )
+
+    def validate_result(self, pattern_text: str) -> Optional[bool]:
+        # Reject if the matched word is in the common-word denylist
+        if pattern_text.strip().lower() in NORWEGIAN_COMMON_WORDS:
+            return False
+        return None
+
+
 def get_norwegian_recognizers() -> List[PatternRecognizer]:
     return [
         FodselsnummerRecognizer(),
@@ -372,4 +426,5 @@ def get_norwegian_recognizers() -> List[PatternRecognizer]:
         NorwegianCityRecognizer(),
         NorwegianDateRecognizer(),
         NorwegianHyphenatedNameRecognizer(),
+        NorwegianNameListRecognizer(),
     ]

@@ -1,25 +1,18 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Anonymize PII in a file before passing it to Claude.
+    Anonymiser PII i en fil for den sendes til Claude.
 .EXAMPLE
-    .\safe.ps1 C:\Users\me\Downloads\rapport.xlsx
+    .\safe.ps1 C:\Users\meg\Downloads\rapport.xlsx
 #>
 param(
     [Parameter(Mandatory, Position = 0)]
-    [string]$FilePath
+    [string]$FilePath,
+    [string]$OutputDir = (Join-Path $PSScriptRoot "safe-output")
 )
 
-$ScriptDir  = $PSScriptRoot
-$OutputDir  = Join-Path $ScriptDir "safe-output"
-$InputAbs   = (Resolve-Path $FilePath -ErrorAction Stop).Path
-$InputDir   = Split-Path -Parent $InputAbs
-$InputName  = Split-Path -Leaf  $InputAbs
+$InputAbs = (Resolve-Path $FilePath -ErrorAction Stop).Path
+New-Item -ItemType Directory -Force $OutputDir        | Out-Null
+New-Item -ItemType Directory -Force "$OutputDir\logs" | Out-Null
 
-New-Item -ItemType Directory -Force $OutputDir | Out-Null
-
-docker compose -f "$ScriptDir\docker-compose.yml" run --rm `
-    -v "${InputDir}:/safe_input:ro" `
-    -v "${OutputDir}:/app/safe-output" `
-    safe "/safe_input/$InputName" `
-    --output-dir /app/safe-output
+python -m safe_cli.main "$InputAbs" --output-dir "$OutputDir"

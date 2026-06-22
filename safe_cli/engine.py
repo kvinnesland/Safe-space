@@ -9,6 +9,7 @@ from presidio_anonymizer import AnonymizerEngine
 from presidio_anonymizer.entities import OperatorConfig
 
 from .norwegian import get_norwegian_recognizers
+from .name_lists import NORWEGIAN_COMMON_WORDS, NORWEGIAN_NAMES
 
 # Maps Presidio entity types to the placeholders written into anonymized output
 ENTITY_TO_PLACEHOLDER: Dict[str, str] = {
@@ -55,6 +56,65 @@ _YEAR_RE_START = re.compile(r"^(19|20)\d{2}\b")
 # Customer/employee IDs like KN-002 or A-101 misclassified as LOCATION
 _ID_RE = re.compile(r"^[A-Za-z]{1,4}[-/]\d{1,6}[A-Za-z]?$")
 
+# Words that should never be tagged as PERSON — combination of the
+# property-specific list (rooms, materials, headings) and the general
+# Norwegian vocabulary imported from name_lists.py.
+_NO_PERSON_DENYLIST: frozenset = frozenset({
+    # Rooms and areas
+    "etasje", "plan", "rom", "soverom", "stue", "kjøkken", "bad", "badrom",
+    "baderom", "vaskerom", "toalettrom", "wc", "gang", "entre", "entré",
+    "bod", "garasje", "loft", "loftstue", "balkong", "veranda", "terrasse",
+    "korridor", "hall", "vindfang", "trapperom",
+    # Building / property types
+    "bygg", "bygning", "blokk", "bolig", "leilighet", "enebolig", "rekkehus",
+    "tomannsbolig", "hytte", "tomt", "eiendom", "sameie", "borettslag",
+    "seksjon", "fellesareal", "uteareal",
+    # Property-document headings
+    "innvendig", "utvendig", "generelt", "oppsummering", "kommentar",
+    "vurdering", "konsekvens", "tiltak", "avvik", "beskrivelse", "standard",
+    "tilstand", "vedlikehold", "innredning", "overflater", "installasjoner",
+    "parkering", "lagring", "renovasjon",
+    # Materials / surfaces
+    "parkett", "flis", "laminat", "maling", "betong", "gips", "stein",
+    "marmor", "treverk", "puss",
+    # Building elements
+    "vindu", "dør", "innerdør", "ytterdør", "balkongdør", "port", "leddport",
+    "tak", "gulv", "himling", "vegg", "mur", "trapp", "rekkverk",
+    "gelender", "søyle", "kledning", "fasade",
+    # Cardinal directions
+    "nord", "sør", "øst", "vest", "nordøst", "nordvest", "sørøst", "sørvest",
+    # Real estate process terms
+    "megler", "selger", "kjøper", "eier", "leietaker", "utleier",
+    "takst", "salg", "kjøp", "bud", "oppdrag",
+    # Administrative
+    "kommune", "fylke", "sted", "tettsted",
+}) | NORWEGIAN_COMMON_WORDS  # merge with general Norwegian vocabulary
+
+# Norwegian compound-noun suffixes that never end a person name.
+# Catches long compound nouns that aren't in the denylist above.
+_NO_COMPOUND_NOUN_SUFFIX = re.compile(
+    r"(arealer?|forhold|konstruksjon|skille[r]?|tekking|"
+    r"analyse[n]?|rapport(?:en)?|grader?|gradene|måte[n]?|åpner|"
+    r"deler?|tilstand(?:en)?|sjon(?:en|er|ene)?|installasjoner?|"
+    r"forutsetninger?|leiligheten?|eiendommen?|"
+    r"kart(?:et)?|forsikring(?:en|er|ene)?|forvaltning(?:en)?|"
+    r"endring(?:en|er|ene)?|antydning(?:en)?|beskrivelse[n]?|"
+    r"avtale[n]?|plikt(?:en)?)$",
+    re.IGNORECASE | re.UNICODE,
+)
+
+# Lowercase particles that can appear inside a multi-word name (van, de, …)
+_NAME_PARTICLES = frozenset({
+    "van", "de", "von", "af", "av", "der", "den", "el", "al", "la", "le",
+})
+
+# DATE_TIME false-positive: prepositions that follow a noun cause the NER
+# to tag "noun + fra/til/…" as a date ("eierleilighet fra 2019").
+_DATE_FP_LEADING_PREP = re.compile(
+    r"^(?:[A-Za-zÆØÅæøå]+\s+)?(fra|til|siden|innen|etter|before|after|from|since)\b",
+    re.IGNORECASE,
+)
+
 
 def _load_available_models() -> List[Dict[str, str]]:
     """Find the best available spaCy model for each supported language."""
@@ -75,8 +135,9 @@ def _load_available_models() -> List[Dict[str, str]]:
 
     if not found:
         raise RuntimeError(
-            "No spaCy model found. Build the Docker image first:\n"
-            "  docker compose build"
+            "No spaCy model found. Run setup first:\n"
+            "  Windows: .\\setup.ps1\n"
+            "  Mac/Linux: bash setup.sh"
         )
     return found
 
@@ -111,6 +172,76 @@ def _filter_false_positives(results: list, text: str) -> list:
             continue
         # ALL-CAPS abbreviations (DNS, API, …) tagged as PERSON/NRP
         if r.entity_type in ("PERSON", "NRP") and len(stripped) >= 2 and stripped.isupper():
+            continue
+        if r.entity_type in ("PERSON", "NRP"):
+            # Common Norwegian nouns misclassified as person names by NER
+            if stripped.lower() in _NO_PERSON_DENYLIST:
+                continue
+            # Single-token match ≤ 4 chars: skip unless it's a known Norwegian name.
+            # This catches short prepositions/articles ("den", "fra", "og") while
+            # allowing real short names like Per, Ole, Tor, Åse through.
+            if " " not in stripped and len(stripped) <= 4:
+                if stripped not in NORWEGIAN_NAMES:
+                    continue
+            # Single-word compound nouns identified by suffix (never person names)
+            if " " not in stripped and _NO_COMPOUND_NOUN_SUFFIX.search(stripped):
+                continue
+            # Multi-word spans: keep only if every token starts with a capital
+            # letter (or is a known lowercase particle like "van", "de", "von"),
+            # AND no individual token is itself a known non-name word.
+            # This eliminates sentence fragments ("det kort vei til skole",
+            # "butikk og busstopp") and heading pairs ("Takkonstruksjon/ Loft").
+            if " " in stripped:
+                tokens = stripped.split()
+                if not all(
+                    (bool(w) and w[0].isupper()) or w.lower() in _NAME_PARTICLES
+                    for w in tokens
+                ):
+                    continue
+                clean = [re.sub(r"[^\w]", "", w, flags=re.UNICODE) for w in tokens]
+                if any(
+                    c.lower() in _NO_PERSON_DENYLIST
+                    or (bool(c) and _NO_COMPOUND_NOUN_SUFFIX.search(c))
+                    for c in clean
+                ):
+                    continue
+        if r.entity_type == "LOCATION":
+            # Latin Extended-B characters (U+0180–U+024F) indicate a custom PDF
+            # font that couldn't be decoded — the text is unreadable, not a location.
+            if any("ƀ" <= c <= "ɏ" for c in stripped):
+                continue
+            # PDF private-use-area characters (custom font encoding artifacts)
+            if any("" <= c <= "" for c in stripped):
+                continue
+            # Spans containing newlines are PDF extraction artifacts, not addresses
+            if "\n" in stripped:
+                continue
+            # ALL-CAPS short abbreviations (NS, UK, EL, ...) are not locations
+            if len(stripped) <= 4 and stripped.isupper():
+                continue
+            # Common Norwegian words tagged as locations by NER.
+            # Strip trailing punctuation so "vinskap," matches "vinskap".
+            clean_stripped = stripped.rstrip(".,;:!?-")
+            if clean_stripped.lower() in _NO_PERSON_DENYLIST:
+                continue
+            # Compound noun suffixes never end a location name
+            if " " not in clean_stripped and _NO_COMPOUND_NOUN_SUFFIX.search(clean_stripped):
+                continue
+            # Multi-word location spans: every token must start with a capital
+            # (filters "membran og", "til ny", "Kjøper og", "inn bud", etc.)
+            if " " in stripped:
+                tokens = stripped.split()
+                if not all(
+                    (bool(w) and w[0].isupper()) or w.lower() in _NAME_PARTICLES
+                    for w in tokens
+                ):
+                    continue
+        # NO_ADDRESS spans containing newlines are pattern misfires across
+        # PDF field boundaries (e.g. "9020\nPoststed\nTromsdalen").
+        if r.entity_type == "NO_ADDRESS" and "\n" in stripped:
+            continue
+        # DATE_TIME false-positive: "noun fra/til year" is not a date.
+        if r.entity_type == "DATE_TIME" and _DATE_FP_LEADING_PREP.search(stripped):
             continue
         out.append(r)
     return out
@@ -163,12 +294,14 @@ class AnonymizerCore:
             )
 
         if self._has_nb:
-            # Norwegian model adds PER/LOC/ORG entities missed by the English model.
+            # Norwegian model adds PERSON/LOC entities missed by the English model.
+            # NRP (nationalities/groups) is intentionally excluded: it maps to [NAME]
+            # but nationalities are not person names and cause many false positives.
             # Pattern recognizers (phone, fnr, email…) are already covered by the en pass.
             nb_results = self._analyzer.analyze(
                 text=text,
                 language="nb",
-                entities=["PERSON", "LOCATION", "NRP"],
+                entities=["PERSON", "LOCATION"],
                 score_threshold=CONFIDENCE_THRESHOLD,
             )
             results = _merge_results(results, list(nb_results))

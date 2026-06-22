@@ -14,8 +14,7 @@ from .handlers import get_handler
 from .language import detect as detect_language, is_supported as lang_is_supported
 from .media import STANDALONE_MEDIA_EXT, standalone_warning
 
-DEFAULT_OUTPUT_DIR = Path("/app/safe-output")
-DEFAULT_LOG_DIR = DEFAULT_OUTPUT_DIR / "logs"
+DEFAULT_OUTPUT_DIR = Path("safe-output")
 
 
 def _article9_warning(categories: List[str]) -> None:
