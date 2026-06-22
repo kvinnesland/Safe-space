@@ -3,7 +3,7 @@
 import re
 from typing import Dict, List, Tuple
 
-from presidio_analyzer import AnalyzerEngine, RecognizerRegistry
+from presidio_analyzer import AnalyzerEngine, RecognizerRegistry, RecognizerResult
 from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio_anonymizer import AnonymizerEngine
 from presidio_anonymizer.entities import OperatorConfig
@@ -197,6 +197,32 @@ def _filter_false_positives(results: list, text: str) -> list:
                     (bool(w) and w[0].isupper()) or w.lower() in _NAME_PARTICLES
                     for w in tokens
                 ):
+                    # NER sometimes grabs "Surname lowercase words…" as one span.
+                    # Salvage the leading capitalized name prefix if it's a known name.
+                    prefix = []
+                    for w in tokens:
+                        if (bool(w) and w[0].isupper()) or w.lower() in _NAME_PARTICLES:
+                            prefix.append(w)
+                        else:
+                            break
+                    if prefix:
+                        prefix_clean = [re.sub(r"[^\w]", "", w, flags=re.UNICODE) for w in prefix]
+                        if (
+                            any(c in NORWEGIAN_NAMES for c in prefix_clean)
+                            and not any(
+                                c.lower() in _NO_PERSON_DENYLIST
+                                or (bool(c) and _NO_COMPOUND_NOUN_SUFFIX.search(c))
+                                for c in prefix_clean
+                            )
+                        ):
+                            pm = re.search(
+                                r"\s+".join(re.escape(t) for t in prefix),
+                                text[r.start : r.end],
+                            )
+                            if pm:
+                                out.append(RecognizerResult(
+                                    r.entity_type, r.start, r.start + pm.end(), r.score,
+                                ))
                     continue
                 clean = [re.sub(r"[^\w]", "", w, flags=re.UNICODE) for w in tokens]
                 if any(

@@ -118,6 +118,8 @@ class NorwegianPhoneRecognizer(PatternRecognizer):
     PATTERNS = [
         Pattern("NO phone +47 mobile", r"\+47[\s\-]?[49]\d{7}\b", 0.90),
         Pattern("NO phone +47 landline", r"\+47[\s\-]?[2-8]\d{7}\b", 0.85),
+        # Spaced formats: +47 91 23 45 67 or +47 22 11 33 44
+        Pattern("NO phone +47 spaced", r"\+47[\s\-]?[2-9]\d(?:[\s\-]\d{2}){3}\b", 0.92),
         Pattern("NO phone 0047", r"\b0047[\s\-]?\d{8}\b", 0.90),
         Pattern("NO mobile 8-digit", r"\b([49]\d{2}[\s\-]\d{2}[\s\-]\d{3}|[49]\d{7})\b", 0.70),
         Pattern("NO landline XX XX XX XX", r"\b[2-9]\d[\s\-]\d{2}[\s\-]\d{2}[\s\-]\d{2}\b", 0.60),
@@ -224,7 +226,7 @@ class NorwegianPostalAddressRecognizer(PatternRecognizer):
         first_word = city.split()[0].lower()
         if first_word in NORWEGIAN_COMMON_WORDS:
             return False
-        return None
+        return True
 
 
 _MONTHS_NO = (
